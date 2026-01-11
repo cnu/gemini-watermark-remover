@@ -1,17 +1,20 @@
 // Gemini Watermark Remover
 //
 // A command-line tool to remove Gemini AI watermarks from generated images.
-// Supports single file processing or batch processing of entire directories.
+// Supports single files, multiple files, glob patterns, or batch processing of directories.
 //
 // Usage:
 //
-//	gemini-watermark-remover [options] <image-or-directory>
+//	gemini-watermark-remover [options] <files|directories|globs>...
 //
 // Examples:
 //
-//	gemini-watermark-remover image.png           # Process single image
-//	gemini-watermark-remover ./images/           # Process all images in folder
-//	gemini-watermark-remover -v -s _clean image.png  # Verbose with custom suffix
+//	gemini-watermark-remover image.png                    # Process single image
+//	gemini-watermark-remover img1.png img2.png img3.jpg   # Process multiple files
+//	gemini-watermark-remover ./images/                    # Process all images in folder
+//	gemini-watermark-remover "*.png"                      # Process all PNG files (glob)
+//	gemini-watermark-remover "photos/*.jpg"               # Glob with directory
+//	gemini-watermark-remover -v -s _clean image.png       # Verbose with custom suffix
 package main
 
 import (
@@ -53,19 +56,22 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Gemini Watermark Remover\n\n")
 		fmt.Fprintf(os.Stderr, "Removes the Gemini AI watermark from generated images using\n")
 		fmt.Fprintf(os.Stderr, "reverse alpha blending.\n\n")
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <image-or-directory>\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <files|directories|globs>...\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s image.png                    # Process single image\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s img1.png img2.jpg img3.png   # Process multiple files\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -s _nowm image.png           # Custom suffix\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s ./images/                    # Process all images in folder\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s \"*.png\"                      # Process all PNG files (glob)\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s \"photos/*.jpg\" ./other/      # Mix glob and directory\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -v ./images/                 # Verbose mode\n", os.Args[0])
 	}
 
 	flag.Parse()
 
-	// Require at least one positional argument (file or directory path)
+	// Require at least one positional argument (file, directory, or glob pattern)
 	if flag.NArg() == 0 {
 		flag.Usage()
 		os.Exit(1)
@@ -79,34 +85,54 @@ func main() {
 		os.Exit(1)
 	}
 
-	inputPath := flag.Arg(0)
+	// Build list of files to process from all arguments
+	var files []string
 
-	// Determine if input is a file or directory
-	info, err := os.Stat(inputPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error accessing path: %v\n", err)
+	for _, inputPath := range flag.Args() {
+		// Check if input looks like a glob pattern
+		if isGlobPattern(inputPath) {
+			matched, err := expandGlob(inputPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error expanding glob pattern %s: %v\n", inputPath, err)
+				continue
+			}
+			files = append(files, matched...)
+		} else {
+			// Check if it's a file or directory
+			info, err := os.Stat(inputPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error accessing path %s: %v\n", inputPath, err)
+				continue
+			}
+
+			if info.IsDir() {
+				// Scan directory for image files
+				dirFiles, err := findImageFiles(inputPath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error scanning directory %s: %v\n", inputPath, err)
+					continue
+				}
+				files = append(files, dirFiles...)
+			} else {
+				// Single file - skip if it already has the output suffix
+				if strings.Contains(strings.ToLower(inputPath), strings.ToLower(suffix)) {
+					if !quiet {
+						fmt.Printf("Skipping %s (already processed)\n", inputPath)
+					}
+					continue
+				}
+				files = append(files, inputPath)
+			}
+		}
+	}
+
+	if len(files) == 0 {
+		fmt.Fprintf(os.Stderr, "No image files found to process\n")
 		os.Exit(1)
 	}
 
-	// Build list of files to process
-	var files []string
-	if info.IsDir() {
-		// Scan directory for image files
-		files, err = findImageFiles(inputPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
-			os.Exit(1)
-		}
-		if len(files) == 0 {
-			fmt.Fprintf(os.Stderr, "No image files found in directory\n")
-			os.Exit(1)
-		}
-		if !quiet {
-			fmt.Printf("Found %d image(s) to process\n", len(files))
-		}
-	} else {
-		// Single file mode
-		files = []string{inputPath}
+	if !quiet {
+		fmt.Printf("Found %d image(s) to process\n", len(files))
 	}
 
 	// Process each file and track success count
@@ -124,6 +150,50 @@ func main() {
 	if !quiet {
 		fmt.Printf("Successfully processed %d/%d image(s)\n", successCount, len(files))
 	}
+}
+
+// isGlobPattern checks if the input string contains glob metacharacters.
+func isGlobPattern(pattern string) bool {
+	return strings.ContainsAny(pattern, "*?[")
+}
+
+// expandGlob expands a glob pattern and returns matching image files.
+// It filters results to only include supported image formats (PNG, JPEG)
+// and excludes files that already have the output suffix.
+func expandGlob(pattern string) ([]string, error) {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+	for _, match := range matches {
+		// Skip directories
+		info, err := os.Stat(match)
+		if err != nil || info.IsDir() {
+			continue
+		}
+
+		// Check if it's a supported image format
+		if !isSupportedImage(match) {
+			continue
+		}
+
+		// Skip files that already have our output suffix
+		if strings.Contains(strings.ToLower(match), strings.ToLower(suffix)) {
+			continue
+		}
+
+		files = append(files, match)
+	}
+
+	return files, nil
+}
+
+// isSupportedImage checks if a file has a supported image extension.
+func isSupportedImage(filename string) bool {
+	ext := strings.ToLower(filepath.Ext(filename))
+	return ext == ".png" || ext == ".jpg" || ext == ".jpeg"
 }
 
 // findImageFiles scans a directory for supported image files (PNG, JPEG).
@@ -145,20 +215,20 @@ func findImageFiles(dir string) ([]string, error) {
 			continue
 		}
 
-		// Check file extension (case-insensitive)
-		name := strings.ToLower(entry.Name())
-		if strings.HasSuffix(name, ".png") ||
-			strings.HasSuffix(name, ".jpg") ||
-			strings.HasSuffix(name, ".jpeg") {
+		name := entry.Name()
 
-			// Skip files that already have our output suffix to avoid
-			// reprocessing previously cleaned images
-			if strings.Contains(name, suffix) {
-				continue
-			}
-
-			files = append(files, filepath.Join(dir, entry.Name()))
+		// Check if it's a supported image format
+		if !isSupportedImage(name) {
+			continue
 		}
+
+		// Skip files that already have our output suffix to avoid
+		// reprocessing previously cleaned images
+		if strings.Contains(strings.ToLower(name), strings.ToLower(suffix)) {
+			continue
+		}
+
+		files = append(files, filepath.Join(dir, name))
 	}
 
 	return files, nil

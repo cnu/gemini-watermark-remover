@@ -49,8 +49,18 @@ Download the latest release from the releases page.
 # Process a single image
 ./gemini-watermark-remover image.png
 
+# Process multiple images
+./gemini-watermark-remover image1.png image2.jpg image3.png
+
 # Process all images in a directory
 ./gemini-watermark-remover ./my-images/
+
+# Process files matching a glob pattern
+./gemini-watermark-remover "*.png"
+./gemini-watermark-remover "photos/*.jpg"
+
+# Mix files, directories, and globs
+./gemini-watermark-remover image.png ./folder/ "other/*.jpg"
 
 # Use a custom suffix (default is "_clean")
 ./gemini-watermark-remover -s "_nowatermark" image.png
@@ -61,6 +71,8 @@ Download the latest release from the releases page.
 # Quiet mode - only show errors
 ./gemini-watermark-remover -q ./my-images/
 ```
+
+**Note:** When using glob patterns, quote them to prevent shell expansion (e.g., `"*.png"` not `*.png`).
 
 ### Options
 
@@ -91,6 +103,16 @@ Download the latest release from the releases page.
 # Input: ./generated/*.png
 # Output: ./generated/*_clean.png
 ./gemini-watermark-remover ./generated/
+
+# Process using glob pattern
+# Input: all .png files in current directory
+# Output: *_clean.png
+./gemini-watermark-remover "*.png"
+
+# Glob with subdirectory
+# Input: photos/vacation001.jpg, photos/vacation002.jpg, ...
+# Output: photos/vacation001_clean.jpg, photos/vacation002_clean.jpg, ...
+./gemini-watermark-remover "photos/*.jpg"
 ```
 
 ## Supported Formats
