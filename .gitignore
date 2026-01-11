@@ -1,0 +1,40 @@
+# Binaries
+gemini-watermark-remover
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test images (don't commit sample images)
+*.png
+*.jpg
+*.jpeg
+
+# Allow the embedded reference assets
+!watermark/assets/*.png
