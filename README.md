@@ -108,11 +108,41 @@ gemini-watermark-remover/
 └── watermark/
     ├── doc.go              # Package documentation
     ├── assets.go           # Embedded reference watermark images
+    ├── assets_test.go      # Tests for asset loading
     ├── alphamap.go         # Alpha map extraction from reference images
+    ├── alphamap_test.go    # Tests for alpha map calculation
     ├── engine.go           # Core watermark removal algorithm
+    ├── engine_test.go      # Tests for watermark removal engine
     └── assets/
         ├── bg_48.png       # 48x48 reference (watermark on black)
         └── bg_96.png       # 96x96 reference (watermark on black)
+```
+
+## Testing
+
+Run all tests:
+
+```bash
+go test ./...
+```
+
+Run tests with verbose output:
+
+```bash
+go test -v ./...
+```
+
+Run tests with coverage report:
+
+```bash
+go test -cover ./...
+```
+
+Generate detailed coverage report:
+
+```bash
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out -o coverage.html
 ```
 
 ## How the Reference Images Work
